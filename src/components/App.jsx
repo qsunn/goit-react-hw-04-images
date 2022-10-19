@@ -1,9 +1,10 @@
 import 'react-toastify/dist/ReactToastify.css';
 
-import { PureComponent } from 'react';
+import { useState, useEffect } from 'react';
 import { ToastContainer } from 'react-toastify';
 
 import { getData } from '../services/api';
+
 import { Searchbar } from './Searchbar/Searchbar';
 import { ImageGallery } from './ImageGallery/ImageGallery';
 import { Button } from './Button/Button';
@@ -11,86 +12,99 @@ import { Modal } from './Modal/Modal';
 import { Loader } from './Loader/Loader';
 import { NothingFound } from './NothingFound/NothingFound';
 
-export class App extends PureComponent {
-  state = {
-    images: [],
-    page: 1,
-    search: '',
-    status: 'idle',
-    error: '',
-    showButton: false,
-    modalImageUrl: '',
-  };
+const STATUS = {
+  IDLE: 'idle',
+  PENDING: 'pending',
+  RESOLVED: 'resolved',
+  REJECTED: 'rejected',
+};
 
-  componentDidUpdate(prevProps, prevState) {
-    const { page, search } = this.state;
+export const App = () => {
+  const [images, setImages] = useState([]);
+  const [page, setPage] = useState(1);
+  const [lastPage, setLastPage] = useState(1);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState(STATUS.IDLE);
+  const [error, setError] = useState('');
+  const [showButton, setShowButton] = useState(false);
+  const [modalImageUrl, setModalImageUrl] = useState('');
 
-    if (prevState.page !== page && page !== 1) {
-      getData(search, page).then(data => {
-        this.setState({ images: [...prevState.images, ...data.hits] });
-        page >= data.pages && this.toggleButton();
-      });
-    }
-
-    if (prevState.search !== search) {
-      this.reset();
-      this.setState({ status: 'pending' });
-      getData(search)
+  useEffect(() => {
+    if (query) {
+      setStatus(STATUS.PENDING);
+      getData(query)
         .then(data => {
           return data.hits?.length
             ? data
             : Promise.reject(
-                new Error(`Nothing to found for "${search}" search`)
+                new Error(`Nothing to found for "${query}" search`)
               );
         })
         .then(data => {
-          this.setState({ images: data.hits, status: 'resolved' });
-          this.state.page < data.pages && this.toggleButton();
+          setImages(data.hits);
+          setLastPage(data.lastPage);
+          setStatus(STATUS.RESOLVED);
         })
-        .catch(error =>
-          this.setState({ error: error.message, status: 'rejected' })
-        );
+        .catch(error => {
+          setError(error.message);
+          setStatus(STATUS.REJECTED);
+        });
     }
-  }
+  }, [query]);
 
-  onSubmit = search => this.setState({ search: search });
+  useEffect(() => {
+    if (page !== 1) {
+      getData(query, page).then(data => {
+        setImages(prevImages => [...prevImages, ...data.hits]);
+        setLastPage(data.lastPage);
+      });
+    }
+  }, [page, query]);
 
-  loadMoreHandler = () => this.setState({ page: this.state.page + 1 });
+  useEffect(() => {
+    if (lastPage !== 1) {
+      page >= lastPage ? setShowButton(false) : setShowButton(true);
+    }
+  }, [lastPage, page]);
 
-  toggleButton = () => this.setState({ showButton: !this.state.showButton });
+  const reset = () => {
+    setPage(1);
+    setLastPage(1);
+    setShowButton(false);
+  };
 
-  toggleLoader = () => this.setState({ status: 'pending' });
+  const toggleModal = (url = '') => setModalImageUrl(url);
 
-  toggleModal = (url = '') => this.setState({ modalImageUrl: url });
+  const loadMoreHandler = () => setPage(p => p + 1);
 
-  reset = () => this.setState({ page: 1, showButton: false });
+  const onSubmit = query => {
+    reset();
+    setQuery(query);
+  };
 
-  render() {
-    const { images, search, status, error, showButton, modalImageUrl } =
-      this.state;
+  return (
+    <div className="App">
+      <Searchbar onSubmit={onSubmit} />
 
-    return (
-      <div className="App">
-        <Searchbar onSubmit={this.onSubmit} />
+      {status === 'resolved' && (
+        <ImageGallery images={images} toggleModal={toggleModal} />
+      )}
 
-        {status === 'resolved' && (
-          <ImageGallery images={images} toggleModal={this.toggleModal} />
-        )}
+      {status === 'rejected' && <NothingFound message={error} />}
 
-        {status === 'rejected' && <NothingFound message={error} />}
+      {status === 'pending' && <Loader />}
 
-        {status === 'pending' && <Loader />}
+      {showButton && <Button loadMoreHandler={loadMoreHandler} />}
 
-        {showButton && <Button loadMoreHandler={this.loadMoreHandler} />}
+      {modalImageUrl && (
+        <Modal
+          modalImageUrl={modalImageUrl}
+          toggleModal={toggleModal}
+          query={query}
+        />
+      )}
 
-        {modalImageUrl && (
-          <Modal toggleModal={this.toggleModal}>
-            <img src={modalImageUrl} alt={search} />
-          </Modal>
-        )}
-
-        <ToastContainer position="bottom-center" autoClose={2000} />
-      </div>
-    );
-  }
-}
+      <ToastContainer position="bottom-center" autoClose={2000} />
+    </div>
+  );
+};
