@@ -27,7 +27,7 @@ export const Modal = ({ modalImageUrl, toggleModal, query }) => {
           src={modalImageUrl}
           alt={query}
           onLoad={() => setLoaded(true)}
-          style={{ display: loaded ? 'block' : 'none' }}
+          className={s[loaded ? 'loaded' : 'loading']}
         />
         {!loaded && <Loader />}
       </div>
